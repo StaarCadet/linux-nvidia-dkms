@@ -1,0 +1,9 @@
+---
+#This is where it dumps your zip
+filepath: /tmp
+#No touchy:-------------------------------------------------------
+filename: NVIDIA-Linux-x86_64-550.127.05.run
+rhel7zip: nvidia-el7.zip
+rhel8zip: nvidia-el8.zip
+dkms7: dkms-3.0.12-1.el7.noarch.rpm
+dkms8: dkms-3.1.0-2.el8.noarch.rpm

@@ -1,0 +1,110 @@
+# This Playbook permanently eliminates GPU driver falloff/outdate and causing the Gnome Desktop to stop working
+# V1.2 -  Original Author - Cameron Williams
+# ------------------------------------------------------------------------------------------------------------------------------------------------------------------
+# This Playbook will not run on any computers with incompatible GPUs - if the playbook fails, it will tell you which computer and GPU model is causing the failure.
+# To update anything - change the package name in the playbook below, and recreate the nvidia.zip file with the dkms and nvidia driver installer.
+# If you are updating the NVIDIA Driver package to fit a different GPU - you need to edit the vars.yml file to match the GPU list provided by NVIDIA.
+# I completed this fairly quickly by formatting in vscode using regex find and replace.
+- name: check and record GPU model
+  shell: lshw -numeric -C display | grep product
+  register: GPU
+
+- debug:
+    var: GPU.stdout
+
+- name: make nvidia folder
+  file:
+    path: "{{ filepath }}"
+    state: directory
+    mode: 0755
+
+- name: copy tar ball
+  copy:
+    src: "{{ rhel7zip }}"
+    dest: "{{ filepath }}/nvidia.zip"
+    owner: root
+    group: root
+    mode: 0755
+  when: (ansible_facts['distribution'] == "RedHat" and ansible_facts['distribution_major_version'] == "7")
+
+- name: copy tar ball
+  copy:
+    src: "{{ rhel8zip }}"
+    dest: "{{ filepath }}/nvidia.zip"
+    owner: root
+    group: root
+    mode: 0755
+  when: (ansible_facts['distribution'] == "RedHat" and ansible_facts['distribution_major_version'] == "8")
+
+- name: unzip archive
+  unarchive:
+    src: "{{ filepath }}/nvidia.zip"
+    dest: "{{ filepath }}"
+    remote_src: true
+
+- name: chmod nvidia folder
+  file:
+    path: "{{ filepath }}/*"
+    recurse: true
+    mode: 0755
+
+- name: install dkms
+  yum:
+    name: "{{ filepath }}/{{ dkms7 }}"
+    state: present
+    disable_gpg_check: true
+  when: ansible_facts['os_family'] == "RedHat" and ansible_facts['distribution_major_version'] == "7"
+
+- name: install dkms
+  yum:
+    name: "{{ filepath }}/{{ dkms8 }}"
+    state: present
+    disable_gpg_check: true
+  when: ansible_facts['os_family'] == "RedHat" and ansible_facts['distribution_major_version'] == "8"
+
+- name: check nouveau driver
+  shell: lsmod | grep nouveau
+  register: nouveau
+
+- name: fix nouveau driver
+  shell: echo "blacklist nouveau" > /etc/modprobe.d/denylist.conf
+  when: nouveau is defined or nouveau != ""
+
+- name: fix nouveau driver
+  shell: echo "options nouveau modeset=0" >> /etc/modprobe.d/denylist.conf
+  when: nouveau is defined or nouveau != ""
+
+- name: fix nouveau driver
+  shell: dracut --force
+  when: nouveau is defined or nouveau != ""
+
+- name: fix nouveau driver
+  reboot:
+    reboot_timeout: 3600
+  when: nouveau is defined or nouveau != ""  
+
+- name: stop running x server
+  service:
+    state: stopped
+    name: gdm
+
+- name: install script
+  command: "{{ filepath }}/{{ filename }} --dkms -s --tmpdir {{ filepath }}"
+  async: 900
+
+- name: restart x server
+  service:
+    state: started
+    name: gdm
+
+- name: clean up installers
+  file: 
+    path: "{{ filepath }}/{{ item }}"
+    state: absent
+  loop:
+    - "{{ rhel7zip }}"
+    - "{{ rhel8zip }}"
+    - "{{ filename }}"
+    - "{{ dkms7 }}"
+    - "{{ dkms8 }}"
+  ignore_errors: yes
